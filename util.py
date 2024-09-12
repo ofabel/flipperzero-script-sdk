@@ -1,6 +1,4 @@
-from google.protobuf.json_format import MessageToDict
-
-from fssdk import resolve_port, CLI, Protobuf, protobuf as pb
+from fssdk import resolve_port, upload_file, CLI, Protobuf, protobuf as pb
 
 port = resolve_port()
 
@@ -10,16 +8,7 @@ cli.write_command('start_rpc_session')
 
 protobuf = Protobuf(cli)
 
-request = pb.storage_pb2.ListRequest()
-request.path = '/ext'
+def progress(current, total):
+    print(f'{int(100 * (current / total))}%', end='\r')
 
-response: pb.flipper_pb2.Main = protobuf.send_and_read_answer(request, 'storage_list_request')
-
-for file in response.storage_list_response.file:
-    print(file)
-
-while response.has_next:
-    response = protobuf.read_answer()
-    
-    for file in response.storage_list_response.file:
-        print(file)
+upload_file(protobuf, __file__, '/ext/test.txt', on_progress=progress)

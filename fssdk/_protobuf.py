@@ -10,12 +10,16 @@ class Protobuf:
     def __init__(self, cli: CLI):
         self._cli = cli
 
+    def get_next_seq(self) -> int:
+        self._seq += 1
+
+        return self._seq
+
     def send(self, data, command: str, has_next: bool = None, seq: int = None) -> int:
         message = flipper_pb2.Main()
 
         if seq is None:
-            self._seq += 1
-            message.command_id = self._seq
+            message.command_id = self.get_next_seq()
         else:
             message.command_id = seq
 
