@@ -30,14 +30,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	data, err := f0.GetStorageList("/ext/test")
+	files := make([]*flipper.File, 0, 128)
+
+	err = f0.WalkStorageFiles("/ext/test", func(file *flipper.File) {
+		files = append(files, file)
+	})
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, file := range data {
-		println(file.Name)
+	for _, file := range files {
+		println(file.Path)
 	}
 
 	f0.Close()

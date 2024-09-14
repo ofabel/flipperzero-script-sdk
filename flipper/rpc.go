@@ -5,56 +5,97 @@ import (
 	"errors"
 	"fmt"
 	"ofabel/fssdk/flipper/rpc/flipper"
-	"ofabel/fssdk/flipper/rpc/storage"
+	"syscall"
 
 	"google.golang.org/protobuf/proto"
 )
 
 var ErrTooManyBytes = errors.New("too many bytes when decoding varint")
+var ErrTooLittleBytesWritten = errors.New("too little bytes written")
 
-func (f0 *Flipper) GetStorageList(path string) ([]*storage.File, error) {
-	main_request := &flipper.Main{
-		CommandId:     f0.seq,
-		CommandStatus: flipper.CommandStatus_OK,
-		HasNext:       false,
-		Content: &flipper.Main_StorageListRequest{
-			StorageListRequest: &storage.ListRequest{
-				Path: path,
-			},
-		},
-	}
-
+func (f0 *Flipper) getNextSeq() uint32 {
 	f0.seq++
 
-	raw_request, err := proto.Marshal(main_request)
+	return f0.seq
+}
+
+func (f0 *Flipper) send(request *flipper.Main) (uint32, error) {
+	if request.CommandId == 0 {
+		request.CommandId = f0.getNextSeq()
+	}
+
+	if request.Content == nil {
+		request.Content = &flipper.Main_Empty{
+			Empty: &flipper.Empty{},
+		}
+	}
+
+	request.CommandStatus = flipper.CommandStatus_OK
+
+	raw_request, err := proto.Marshal(request)
 
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	var size = len(raw_request)
 	var raw_size = uint64(size)
-	var bytes = make([]byte, 1)
-	var buffer = binary.AppendUvarint(bytes, raw_size)
+	var buffer = make([]byte, 0, binary.MaxVarintLen64)
 
-	buffer = append(buffer[1:], raw_request...)
+	buffer = binary.AppendUvarint(buffer, raw_size)
 
-	f0.port.Write(buffer)
+	buffer = append(buffer, raw_request...)
 
-	response, err := f0.ReadAny()
+	for {
+		n, err := f0.port.Write(buffer)
+
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+
+		if errors.Is(err, syscall.EAGAIN) {
+			continue
+		}
+
+		if err != nil {
+			return 0, err
+		}
+
+		if n != len(buffer) {
+			return 0, ErrTooLittleBytesWritten
+		}
+
+		break
+	}
+
+	return request.CommandId, nil
+}
+
+func (f0 *Flipper) sendAndReceive(request *flipper.Main) (*flipper.Main, error) {
+	seq, err := f0.send(request)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response.CommandStatus != flipper.CommandStatus_OK {
-		return nil, fmt.Errorf("%s", response.CommandStatus)
-	}
-
-	return response.GetStorageListResponse().File, nil
+	return f0.readAnswer(seq)
 }
 
-func (f0 *Flipper) ReadAny() (*flipper.Main, error) {
+func (f0 *Flipper) readAnswer(seq uint32) (*flipper.Main, error) {
+	for {
+		data, err := f0.readAny()
+
+		if err != nil {
+			return nil, err
+		}
+
+		if data.CommandId == seq {
+			return data, nil
+		}
+	}
+}
+
+func (f0 *Flipper) readAny() (*flipper.Main, error) {
 	size, err := f0.readVariant32()
 
 	if err != nil {
@@ -72,6 +113,14 @@ func (f0 *Flipper) ReadAny() (*flipper.Main, error) {
 	data := &flipper.Main{}
 
 	err = proto.Unmarshal(raw_data, data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if data.CommandStatus != flipper.CommandStatus_OK {
+		return nil, fmt.Errorf("%s", data.CommandStatus)
+	}
 
 	return data, err
 }

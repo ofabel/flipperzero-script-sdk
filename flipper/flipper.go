@@ -136,6 +136,10 @@ func (f0 *Flipper) SendCommand(command string) error {
 }
 
 func (f0 *Flipper) StartRpcSession() error {
+	if f0.rpc {
+		return nil
+	}
+
 	err := f0.SendCommand("start_rpc_session")
 
 	if err != nil {
