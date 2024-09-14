@@ -1,7 +1,12 @@
 from google.protobuf.internal.encoder import _VarintBytes
 
 from ._cli import CLI
-from .protobuf import flipper_pb2
+from .proto import flipper_pb2
+
+
+class ProtobufException(Exception):
+    pass
+
 
 class Protobuf:
     _cli: CLI = None
@@ -83,4 +88,4 @@ class Protobuf:
             shift += 7
 
             if shift >= 64:
-                raise Varint32Exception('Too many bytes when decoding varint.')
+                raise ProtobufException('Too many bytes when decoding varint.')
