@@ -2,42 +2,24 @@ package flipper
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/albenik/go-serial/v2"
-	"github.com/albenik/go-serial/v2/enumerator"
 )
 
-var ErrNoFlipperFound = errors.New("no flipper device found")
 var ErrNoTerminalFound = errors.New("no terminal found")
 var ErrCommandNotSend = errors.New("unable to send command")
 
-func GetFlipperPort() (string, error) {
-	ports, err := enumerator.GetDetailedPortsList()
-
-	if err != nil {
-		return "", err
-	}
-	if len(ports) == 0 {
-		return "", ErrNoFlipperFound
-	}
-	for _, port := range ports {
-		if strings.HasPrefix(port.SerialNumber, "flip_") {
-			return port.Name, nil
-		}
-	}
-
-	return "", ErrNoFlipperFound
-}
-
 type Flipper struct {
 	port *serial.Port
+	seq  uint32
+	rpc  bool
 }
 
 var TerminalDelimiter = []byte("\n>: ")
+var CRLF = []byte("\r\n")
 
 func Open(port string) (*Flipper, error) {
-	handle, err := serial.Open(port,
+	connection, err := serial.Open(port,
 		serial.WithBaudrate(230400),
 		serial.WithDataBits(8),
 		serial.WithParity(serial.NoParity),
@@ -51,7 +33,9 @@ func Open(port string) (*Flipper, error) {
 	}
 
 	return &Flipper{
-		port: handle,
+		port: connection,
+		seq:  1,
+		rpc:  false,
 	}, nil
 }
 
@@ -149,4 +133,20 @@ func (f0 *Flipper) SendCommand(command string) error {
 	}
 
 	return nil
+}
+
+func (f0 *Flipper) StartRpcSession() error {
+	err := f0.SendCommand("start_rpc_session")
+
+	if err != nil {
+		return err
+	}
+
+	_, found, err := f0.ReadUntil(CRLF)
+
+	if found && err == nil {
+		f0.rpc = true
+	}
+
+	return err
 }

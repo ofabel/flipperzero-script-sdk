@@ -2,42 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"ofabel/fssdk/flipper"
-
-	"github.com/albenik/go-serial/v2"
 )
-
-func readLine(port *serial.Port) ([]byte, error) {
-	character := make([]byte, 1)
-	buffer := make([]byte, 1)
-	cr := false
-
-	for {
-		n, err := port.Read(character)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if n == 0 {
-			return buffer[1:], nil
-		}
-
-		if character[0] == '\r' {
-			cr = true
-
-			continue
-		}
-
-		if cr && character[0] == '\n' {
-			return buffer[1:], nil
-		}
-
-		cr = false
-
-		buffer = append(buffer, character...)
-	}
-}
 
 func main() {
 	port, err := flipper.GetFlipperPort()
@@ -57,10 +24,21 @@ func main() {
 	}
 
 	f0.ReadUntilTerminal()
-	f0.SendCommand("storage list /ext")
-	data, _ := f0.ReadUntilTerminal()
+	err = f0.StartRpcSession()
 
-	fmt.Println(string(data))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data, err := f0.GetStorageList("/ext/test")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range data {
+		println(file.Name)
+	}
 
 	f0.Close()
 }
